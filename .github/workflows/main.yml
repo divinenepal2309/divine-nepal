@@ -1,9 +1,9 @@
-name: DIVINE NEPAL BUILD FIXED
+name: DIVINE NEPAL BUILD FIXED FINAL
 
 on:
   push:
     branches:
-      - main  # यदि master ब्रान्च हो भने 'master' राख्नुहोस्
+      - main
   workflow_dispatch:
 
 jobs:
@@ -23,19 +23,16 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      # १. रिपोजिटरीमा भएको मुख्य जिप फाइल अनजिप गर्ने
+      # १. मुख्य जिप फाइल अनजिप गर्ने
       - name: Extract Project Zip
         run: |
           echo "Extracting the main project zip file..."
           unzip -o "DIVINE_NEPAL_V37_V32_LUDO_SOCIAL_TOP_FINAL.zip" -d extracted_content
-          echo "Content of extracted folder:"
-          ls -la extracted_content
 
-      # २. अनजिप भएको फोल्डर भित्र पसेर एन्ड्रोइड रूट खोज्ने र बाहिर ल्याउने
+      # २. अनजिप भएको ठाउँबाट एन्ड्रोइड रूट खोज्ने र बाहिर ल्याउने
       - name: Find and Move Android Root
         run: |
           echo "Searching for build.gradle inside extracted files..."
-          # अनजिप भएको ठाउँमा build.gradle कहाँ छ भनेर खोज्छ
           GRADLE_PATH=$(find extracted_content -name "build.gradle" -o -name "build.gradle.kts" | head -n 1)
           
           if [ -z "$GRADLE_PATH" ]; then
@@ -43,37 +40,46 @@ jobs:
             exit 1
           fi
           
-          # प्रोजेक्ट भएको वास्तविक डाइरेक्टरी पत्ता लगाउँछ
           PROJECT_DIR=$(dirname "$GRADLE_PATH")
           echo "Android project root found at: $PROJECT_DIR"
           
-          # सबै फाइलहरूलाई मुख्य गिटहब रूट डाइरेक्टरीमा सार्छ
           cp -r $PROJECT_DIR/* .
           echo "Files successfully moved to root directory."
-          ls -la
 
-      # ३. फाइल मुभ भएपछि रूटमा सही फाइलहरू छन् भनी पक्का गर्ने स्टेप
+      # ३. प्रोजेक्टमा gradlew फाइल नभएमा आफैँ नयाँ सिर्जना गर्ने (Fix Step)
+      - name: Generate Gradle Wrapper if Missing
+        run: |
+          if [ ! -f "gradlew" ]; then
+            echo "gradlew missing! Generating a new gradle wrapper..."
+            gradle wrapper
+          else
+            echo "gradlew already exists."
+          fi
+
+      # ४. एन्ड्रोइड रूट र gradlew दुवै पक्का गर्ने
       - name: Verify Project Structure
         run: |
+          ls -la
           if [ ! -f "build.gradle" ] && [ ! -f "build.gradle.kts" ]; then
             echo "Error: build.gradle still missing from workspace root!"
             exit 1
           fi
 
+      # ५. प्रिमिसन दिने
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
+      # ६. प्रोजेक्ट क्लिन र बिल्ड गर्ने
       - name: Clean Android Project
         run: ./gradlew clean
 
-      # ४. डकुमेन्टमा आधारित पाथ अनुसार एन्ड्रोइड बिल्ड कमाण्ड रन गर्ने
       - name: Build Debug APK
         run: ./gradlew assembleDebug
 
       - name: Build Release AAB
         run: ./gradlew bundleRelease
 
-      # ५. आर्टिफ्याक्ट्स अपलोड (रुटमा फाइल आइसकेकाले सामान्य पाथ काम गर्छ)
+      # ७. फाइलहरू अपलोड गर्ने
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
