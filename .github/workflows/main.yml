@@ -1,9 +1,9 @@
-name: DIVINE NEPAL BUILD
+name: DIVINE NEPAL BUILD FIXED
 
 on:
   push:
     branches:
-      - main  # वा तपाईँको मुख्य ब्रランチको नाम (जस्तै: master) हालिहाल्नुहोस्
+      - main  # यदि master ब्रान्च हो भने 'master' राख्नुहोस्
   workflow_dispatch:
 
 jobs:
@@ -23,55 +23,65 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      # १. यदि रिपोजिटरीमा जिप फाइल छ भने त्यसलाई अनजिप गर्ने र सही फोल्डर लोकेट गर्ने
+      # १. रिपोजिटरीमा भएको मुख्य जिप फाइल अनजिप गर्ने
       - name: Extract Project Zip
         run: |
-          echo "Extracting project if zip exists..."
-          if [ -f "DIVINE_NEPAL_V37_V32_LUDO_SOCIAL_TOP_FINAL.zip" ]; then
-            unzip -o "DIVINE_NEPAL_V37_V32_LUDO_SOCIAL_TOP_FINAL.zip" -d extracted_project
-            # यदि जिप भित्र अर्को एउटा फोल्डर छ भने त्यसका फाइलहरू बाहिर ल्याउने
-            if [ -d "extracted_project/DIVINE_NEPAL_V37_V32_LUDO_SOCIAL_TOP_FINAL" ]; then
-              mv extracted_project/DIVINE_NEPAL_V37_V32_LUDO_SOCIAL_TOP_FINAL/* .
-            else
-              mv extracted_project/* .
-            fi
-          fi
+          echo "Extracting the main project zip file..."
+          unzip -o "DIVINE_NEPAL_V37_V32_LUDO_SOCIAL_TOP_FINAL.zip" -d extracted_content
+          echo "Content of extracted folder:"
+          ls -la extracted_content
 
-      # २. प्रोजेक्ट स्ट्रक्चर र Gradle फाइलहरू चेक गर्ने (तपाईँको जुन स्टेप फेल भएको थियो)
+      # २. अनजिप भएको फोल्डर भित्र पसेर एन्ड्रोइड रूट खोज्ने र बाहिर ल्याउने
+      - name: Find and Move Android Root
+        run: |
+          echo "Searching for build.gradle inside extracted files..."
+          # अनजिप भएको ठाउँमा build.gradle कहाँ छ भनेर खोज्छ
+          GRADLE_PATH=$(find extracted_content -name "build.gradle" -o -name "build.gradle.kts" | head -n 1)
+          
+          if [ -z "$GRADLE_PATH" ]; then
+            echo "Error: build.gradle not found anywhere inside the zip file!"
+            exit 1
+          fi
+          
+          # प्रोजेक्ट भएको वास्तविक डाइरेक्टरी पत्ता लगाउँछ
+          PROJECT_DIR=$(dirname "$GRADLE_PATH")
+          echo "Android project root found at: $PROJECT_DIR"
+          
+          # सबै फाइलहरूलाई मुख्य गिटहब रूट डाइरेक्टरीमा सार्छ
+          cp -r $PROJECT_DIR/* .
+          echo "Files successfully moved to root directory."
+          ls -la
+
+      # ३. फाइल मुभ भएपछि रूटमा सही फाइलहरू छन् भनी पक्का गर्ने स्टेप
       - name: Verify Project Structure
         run: |
-          echo "Checking project files..."
-          ls -la
           if [ ! -f "build.gradle" ] && [ ! -f "build.gradle.kts" ]; then
-            echo "Error: build.gradle file not found in root directory!"
+            echo "Error: build.gradle still missing from workspace root!"
             exit 1
           fi
 
-      # ३. Gradle प्रिमिसन सेट गर्ने
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
-      # ४. एन्ड्रोइड प्रोजेक्ट क्लिन गर्ने
       - name: Clean Android Project
         run: ./gradlew clean
 
-      # ५. Debug APK बिल्ड गर्ने
+      # ४. डकुमेन्टमा आधारित पाथ अनुसार एन्ड्रोइड बिल्ड कमाण्ड रन गर्ने
       - name: Build Debug APK
         run: ./gradlew assembleDebug
 
-      # ६. Release AAB बिल्ड गर्ने
       - name: Build Release AAB
         run: ./gradlew bundleRelease
 
-      # ७. बिल्ड भएका फाइलहरूलाई गिटहब आर्टिफ्याक्ट्समा सेभ गर्ने (डाउनलोड गर्न मिल्ने बनाउन)
+      # ५. आर्टिफ्याक्ट्स अपलोड (रुटमा फाइल आइसकेकाले सामान्य पाथ काम गर्छ)
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: Divine-Nepal-Debug-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: "**/build/outputs/apk/debug/*.apk"
 
       - name: Upload Release AAB
         uses: actions/upload-artifact@v4
         with:
           name: Divine-Nepal-Release-AAB
-          path: app/build/outputs/bundle/release/*.aab
+          path: "**/build/outputs/bundle/release/*.aab"
