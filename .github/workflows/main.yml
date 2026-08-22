@@ -15,40 +15,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout V37
         uses: actions/checkout@v4
 
-      - name: Locate Android Project
-        id: project
+      - name: Verify V37 Project
         shell: bash
         run: |
           set -e
 
-          echo "Searching for Android project..."
+          echo "Checking DIVINE NEPAL V37 project..."
 
-          SETTINGS=$(find . \
-            -type f \
-            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            -not -path "./.git/*" \
-            -print | head -n 1)
+          test -f android/settings.gradle
+          test -f android/build.gradle
+          test -f android/app/build.gradle
+          test -f android/app/src/main/AndroidManifest.xml
+          test -f android/app/src/main/assets/index.html
 
-          if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle not found."
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$SETTINGS")
-
-          echo "Android project:"
-          echo "$PROJECT_DIR"
-
-          if [ ! -f "$PROJECT_DIR/app/build.gradle" ] && \
-             [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "ERROR: app Gradle file not found."
-            exit 1
-          fi
-
-          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "V37 project files OK."
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -70,86 +54,73 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Prepare Gradle
-        working-directory: ${{ steps.project.outputs.project_dir }}
-        shell: bash
-        run: |
-          if [ -f gradlew ]; then
-            chmod +x gradlew
-            echo "Using Gradle wrapper."
-          else
-            echo "Using installed Gradle."
-          fi
-
-      - name: Verify V37
-        working-directory: ${{ steps.project.outputs.project_dir }}
+      - name: Check Gradle
+        working-directory: android
         shell: bash
         run: |
           set -e
+          gradle --version
 
-          test -f settings.gradle || test -f settings.gradle.kts
-          test -f app/build.gradle || test -f app/build.gradle.kts
+      - name: Verify existing Gallery
+        shell: bash
+        run: |
+          echo "Checking existing gallery only..."
+          echo "NO gallery download or preparation will be performed."
 
-          echo "V37 Android project verified."
+          if [ -d "android/app/src/main/assets/gallery" ]; then
+            COUNT=$(find android/app/src/main/assets/gallery \
+              -maxdepth 1 \
+              -type f \
+              | wc -l)
 
-      - name: Check AdMob
-        working-directory: ${{ steps.project.outputs.project_dir }}
+            echo "Existing gallery files: $COUNT"
+          else
+            echo "Gallery directory is not present."
+            echo "Continuing without modifying gallery."
+          fi
+
+      - name: Check AdMob IDs
         shell: bash
         run: |
           echo "Checking AdMob App ID..."
-          grep -R "ca-app-pub-2217341344296752~2494715637" . \
-            --exclude-dir=.gradle \
-            --exclude-dir=build \
+
+          grep -R \
+            "ca-app-pub-2217341344296752~2494715637" \
+            android/app/src/main \
             2>/dev/null || true
 
           echo "Checking AdMob Ad Unit ID..."
-          grep -R "ca-app-pub-2217341344296752/4808898100" . \
-            --exclude-dir=.gradle \
-            --exclude-dir=build \
+
+          grep -R \
+            "ca-app-pub-2217341344296752/4808898100" \
+            android/app/src/main \
             2>/dev/null || true
 
-      - name: Clean
-        working-directory: ${{ steps.project.outputs.project_dir }}
+      - name: Clean Android Project
+        working-directory: android
         run: |
-          if [ -f gradlew ]; then
-            ./gradlew clean --no-daemon
-          else
-            gradle clean --no-daemon
-          fi
+          gradle clean --no-daemon
 
       - name: Build Debug APK
-        working-directory: ${{ steps.project.outputs.project_dir }}
+        working-directory: android
         run: |
-          if [ -f gradlew ]; then
-            ./gradlew assembleDebug \
-              --no-daemon \
-              --stacktrace
-          else
-            gradle assembleDebug \
-              --no-daemon \
-              --stacktrace
-          fi
+          gradle assembleDebug \
+            --no-daemon \
+            --stacktrace
 
       - name: Build Release AAB
-        working-directory: ${{ steps.project.outputs.project_dir }}
+        working-directory: android
         run: |
-          if [ -f gradlew ]; then
-            ./gradlew bundleRelease \
-              --no-daemon \
-              --stacktrace
-          else
-            gradle bundleRelease \
-              --no-daemon \
-              --stacktrace
-          fi
+          gradle bundleRelease \
+            --no-daemon \
+            --stacktrace
 
       - name: Verify APK
-        working-directory: ${{ steps.project.outputs.project_dir }}
         shell: bash
         run: |
           set -e
 
-          APK=$(find app/build/outputs/apk \
+          APK=$(find android/app/build/outputs/apk \
             -type f \
             -name "*.apk" \
             -print | head -n 1)
@@ -159,16 +130,15 @@ jobs:
             exit 1
           fi
 
-          echo "APK generated successfully:"
+          echo "APK successfully generated:"
           echo "$APK"
 
       - name: Verify AAB
-        working-directory: ${{ steps.project.outputs.project_dir }}
         shell: bash
         run: |
           set -e
 
-          AAB=$(find app/build/outputs/bundle \
+          AAB=$(find android/app/build/outputs/bundle \
             -type f \
             -name "*.aab" \
             -print | head -n 1)
@@ -178,28 +148,28 @@ jobs:
             exit 1
           fi
 
-          echo "AAB generated successfully:"
+          echo "AAB successfully generated:"
           echo "$AAB"
 
       - name: Upload Test APK
         uses: actions/upload-artifact@v4
         with:
           name: DIVINE-NEPAL-V37-TEST-APK
-          path: ${{ steps.project.outputs.project_dir }}/app/build/outputs/apk/**/*.apk
+          path: android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
 
       - name: Upload Play Store AAB
         uses: actions/upload-artifact@v4
         with:
           name: DIVINE-NEPAL-V37-PLAYSTORE-AAB
-          path: ${{ steps.project.outputs.project_dir }}/app/build/outputs/bundle/**/*.aab
+          path: android/app/build/outputs/bundle/**/*.aab
           if-no-files-found: error
 
       - name: BUILD SUCCESS
         run: |
-          echo "=========================================="
+          echo "========================================"
           echo "DIVINE NEPAL V37 BUILD SUCCESSFUL"
-          echo "=========================================="
-          echo "Gallery preparation was skipped."
-          echo "Existing gallery/content was preserved."
-          echo "V37 APK and Play Store AAB are ready."
+          echo "========================================"
+          echo "Existing gallery was preserved."
+          echo "Gallery download/preparation was NOT run."
+          echo "APK and AAB are ready."
